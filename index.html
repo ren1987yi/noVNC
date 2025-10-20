@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>noVNC 管理面板</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            height: 100vh;
+            overflow: hidden;
+            background: #f0f2f5;
+        }
+
+        .container {
+            display: flex;
+            height: 100vh;
+            border: 2px solid #4a90e2;
+        }
+
+        /* 左侧边栏 */
+        .sidebar {
+            width: 260px;
+            background: #e8eef5;
+            border-right: 1px solid #d0d7de;
+            display: flex;
+            flex-direction: column;
+            overflow-y: auto;
+        }
+
+        .vm-card {
+            margin: 12px;
+            padding: 20px;
+            background: white;
+            border: 2px solid #6b9bd1;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+            min-height: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .vm-card:hover {
+            background: #f8f9fa;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .vm-card.active {
+            background: #e3f2fd;
+            border-color: #2196f3;
+        }
+
+        .vm-card-title {
+            font-size: 16px;
+            color: #333;
+            text-align: center;
+            word-break: break-word;
+        }
+
+        .vm-card-delete {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #ff4444;
+            color: white;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 20px;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+            padding: 0;
+        }
+
+        .vm-card:hover .vm-card-delete {
+            opacity: 1;
+        }
+
+        .vm-card-delete:hover {
+            background: #cc0000;
+        }
+
+        .add-card {
+            background: white;
+            border: 2px dashed #6b9bd1;
+            color: #6b9bd1;
+        }
+
+        .add-card:hover {
+            border-color: #4a90e2;
+            color: #4a90e2;
+            background: #f0f7ff;
+        }
+
+        .add-card-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .add-icon {
+            font-size: 32px;
+            line-height: 1;
+        }
+
+        .add-text {
+            font-size: 14px;
+        }
+
+        /* 右侧内容区 */
+        .main-content {
+            flex: 1;
+            background: white;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .vnc-frame {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .placeholder {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #999;
+            font-size: 18px;
+        }
+
+        /* 弹窗 */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal-overlay.active {
+            display: flex;
+        }
+
+        .modal {
+            background: white;
+            border: 2px solid #4a90e2;
+            border-radius: 8px;
+            padding: 32px;
+            width: 90%;
+            max-width: 600px;
+            position: relative;
+        }
+
+        .modal-title {
+            font-size: 24px;
+            margin-bottom: 32px;
+            text-align: center;
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 24px;
+        }
+
+        .form-label {
+            display: block;
+            font-size: 18px;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 12px;
+            font-size: 16px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            background: #fefcf0;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: #4a90e2;
+        }
+
+        .form-error {
+            color: #ff4444;
+            font-size: 14px;
+            margin-top: 6px;
+            min-height: 20px;
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 24px;
+            justify-content: center;
+            margin-top: 32px;
+        }
+
+        .modal-button {
+            padding: 12px 48px;
+            font-size: 18px;
+            border: 2px solid #4a90e2;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: white;
+            color: #333;
+        }
+
+        .modal-button:hover {
+            background: #f0f7ff;
+        }
+
+        .modal-button.primary {
+            background: #4a90e2;
+            color: white;
+        }
+
+        .modal-button.primary:hover {
+            background: #357abd;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <!-- 左侧边栏 -->
+        <div class="sidebar" id="sidebar">
+            <!-- VM 列表将动态生成 -->
+        </div>
+
+        <!-- 右侧内容区 -->
+        <div class="main-content">
+            <iframe id="vncFrame" class="vnc-frame" style="display: none;"></iframe>
+            <div id="placeholder" class="placeholder">
+                点击左侧 VM 卡片开始连接
+            </div>
+        </div>
+    </div>
+
+    <!-- 添加 VM 弹窗 -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal">
+            <h2 class="modal-title">添加新的VM</h2>
+            <form id="vmForm">
+                <div class="form-group">
+                    <label class="form-label">名称</label>
+                    <input type="text" id="vmName" class="form-input" placeholder="输入 VM 名称" autocomplete="off">
+                    <div class="form-error" id="nameError"></div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">IP:Port</label>
+                    <input type="text" id="vmAddress" class="form-input" placeholder="例如: 192.168.1.100:5900"
+                        autocomplete="off">
+                    <div class="form-error" id="addressError"></div>
+                </div>
+                <div class="modal-buttons">
+                    <button type="submit" class="modal-button primary">添加</button>
+                    <button type="button" class="modal-button" id="cancelButton">取消</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+
+        let vmList = [];
+        let activeVmId = null;
+
+        // 后端 API 地址
+        const API_BASE = '/api/vms';
+
+        // 加载 VM 列表（从后端）
+        async function loadVMs() {
+            try {
+                const resp = await fetch(API_BASE);
+                if (!resp.ok) throw new Error('加载失败');
+                return await resp.json();
+            } catch (e) {
+                console.error('加载 VM 列表失败:', e);
+                return [];
+            }
+        }
+
+        // 添加 VM（到后端）
+        async function addVMToServer(name, ip, port) {
+            try {
+
+
+                let url = API_BASE ;
+
+                const resp = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, ip, port })
+                });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || '添加失败');
+                }
+                return await resp.json();
+            } catch (e) {
+                throw e;
+            }
+        }
+
+        // 删除 VM（后端）
+        async function deleteVMFromServer(vmId) {
+            try {
+                const resp = await fetch(`${API_BASE}/${vmId}`, { method: 'DELETE' });
+                if (!resp.ok) throw new Error('删除失败');
+            } catch (e) {
+                throw e;
+            }
+        }
+
+        // 构建 VNC URL
+        function buildVncUrl(ip, port) {
+            const token = `${ip}:${port}`;
+            const params = new URLSearchParams({
+                autoconnect: 'true',
+                path: `websockify?token=${token}`
+            });
+            return `vnc.html?${params.toString()}`;
+        }
+
+        // 渲染 VM 列表（异步，自动加载最新）
+        async function renderVMList() {
+            vmList = await loadVMs();
+            const sidebar = document.getElementById('sidebar');
+            sidebar.innerHTML = '';
+
+            // 渲染现有 VM
+            vmList.forEach(vm => {
+                const card = document.createElement('div');
+                card.className = 'vm-card';
+                if (vm.id === activeVmId) {
+                    card.classList.add('active');
+                }
+                card.innerHTML = `
+                    <div class="vm-card-title">${escapeHtml(vm.name)}</div>
+                    <button class="vm-card-delete" data-id="${vm.id}">×</button>
+                `;
+                card.addEventListener('click', (e) => {
+                    if (!e.target.classList.contains('vm-card-delete')) {
+                        selectVM(vm.id);
+                    }
+                });
+                sidebar.appendChild(card);
+            });
+
+            // 添加"+"卡片
+            const addCard = document.createElement('div');
+            addCard.className = 'vm-card add-card';
+            addCard.innerHTML = `
+                <div class="add-card-content">
+                    <div class="add-icon">+</div>
+                    <div class="add-text">添加新的VM</div>
+                </div>
+            `;
+            addCard.addEventListener('click', openModal);
+            sidebar.appendChild(addCard);
+
+            // 绑定删除按钮事件
+            sidebar.querySelectorAll('.vm-card-delete').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteVM(btn.dataset.id);
+                });
+            });
+        }
+
+        // 选择 VM
+        function selectVM(vmId) {
+            const vm = vmList.find(v => v.id === vmId);
+            if (!vm) return;
+
+            activeVmId = vmId;
+            const vncFrame = document.getElementById('vncFrame');
+            const placeholder = document.getElementById('placeholder');
+
+            vncFrame.src = buildVncUrl(vm.ip, vm.port);
+            vncFrame.style.display = 'block';
+            placeholder.style.display = 'none';
+
+            renderVMList();
+        }
+
+        // 删除 VM（异步，后端）
+        async function deleteVM(vmId) {
+            if (!confirm('确定要删除这个 VM 吗？')) return;
+            try {
+                await deleteVMFromServer(vmId);
+                if (activeVmId === vmId) {
+                    activeVmId = null;
+                    const vncFrame = document.getElementById('vncFrame');
+                    const placeholder = document.getElementById('placeholder');
+                    vncFrame.style.display = 'none';
+                    vncFrame.src = '';
+                    placeholder.style.display = 'block';
+                }
+                await renderVMList();
+            } catch (e) {
+                alert('删除失败: ' + e.message);
+            }
+        }
+
+        // 打开弹窗
+        function openModal() {
+            document.getElementById('modalOverlay').classList.add('active');
+            document.getElementById('vmName').value = '';
+            document.getElementById('vmAddress').value = '';
+            document.getElementById('nameError').textContent = '';
+            document.getElementById('addressError').textContent = '';
+            document.getElementById('vmName').focus();
+        }
+
+        // 关闭弹窗
+        function closeModal() {
+            document.getElementById('modalOverlay').classList.remove('active');
+        }
+
+        // 解析 IP:Port
+        function parseAddress(address) {
+            const match = address.trim().match(/^(.+?):(\d+)$/);
+            if (!match) return null;
+
+            const ip = match[1];
+            const port = parseInt(match[2], 10);
+
+            if (port < 1 || port > 65535) return null;
+
+            return { ip, port };
+        }
+
+        // 验证表单
+        function validateForm(name, address) {
+            let valid = true;
+            const nameError = document.getElementById('nameError');
+            const addressError = document.getElementById('addressError');
+
+            nameError.textContent = '';
+            addressError.textContent = '';
+
+            // 验证名称
+            if (!name.trim()) {
+                nameError.textContent = '请输入名称';
+                valid = false;
+            } else if (vmList.some(vm => vm.name === name.trim())) {
+                nameError.textContent = '名称已存在';
+                valid = false;
+            }
+
+            // 验证地址
+            if (!address.trim()) {
+                addressError.textContent = '请输入 IP:Port';
+                valid = false;
+            } else {
+                const parsed = parseAddress(address);
+                if (!parsed) {
+                    addressError.textContent = '格式错误，请使用 IP:Port 格式（端口范围 1-65535）';
+                    valid = false;
+                } else if (vmList.some(vm => vm.ip === parsed.ip && vm.port === parsed.port)) {
+                    addressError.textContent = '该地址已存在';
+                    valid = false;
+                }
+            }
+
+            return valid;
+        }
+
+        // 添加 VM（异步，后端）
+        async function addVM(name, address) {
+            const parsed = parseAddress(address);
+            if (!parsed) return;
+            try {
+                const newVM = await addVMToServer(name.trim(), parsed.ip, parsed.port);
+                await renderVMList();
+                closeModal();
+                selectVM(newVM.id);
+            } catch (e) {
+                document.getElementById('addressError').textContent = e.message;
+            }
+        }
+
+        // HTML 转义
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // 事件监听
+        document.getElementById('vmForm').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const name = document.getElementById('vmName').value;
+            const address = document.getElementById('vmAddress').value;
+
+            if (validateForm(name, address)) {
+                addVM(name, address);
+            }
+        });
+
+        document.getElementById('cancelButton').addEventListener('click', closeModal);
+
+        document.getElementById('modalOverlay').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) {
+                closeModal();
+            }
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                closeModal();
+            }
+        });
+
+        // 初始化
+        async function init() {
+            await renderVMList();
+            if (vmList.length > 0) {
+                selectVM(vmList[0].id);
+            }
+        }
+        init();
+    </script>
+</body>
+
+</html>
