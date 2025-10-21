@@ -10,3 +10,6 @@ recordings
 *.swp
 *~
 noVNC-*.tgz
+
+
+VM_Configure.JSON
